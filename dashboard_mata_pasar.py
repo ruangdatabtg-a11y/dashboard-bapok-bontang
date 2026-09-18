@@ -613,7 +613,7 @@ elif halaman == "📊 Disparitas Harga":
 - Batang yang **melewati garis merah** (> 1%) → komoditas ini belum memenuhi target disparitas
 - Semakin **panjang dan merah** batangnya → semakin besar kesenjangan harga antar pasar
 - Batang **pendek dan hijau** (≤ 1%) → harga komoditas ini sudah seragam di ketiga pasar
-- Komoditas diurutkan dari disparitas terkecil (atas) ke terbesar (bawah)
+- Komoditas diurutkan dari disparitas terbesar (atas) ke terkecil (bawah)
 """)
 
     # Perbandingan harga 3 pasar
