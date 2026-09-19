@@ -5,7 +5,7 @@ Pemantauan Harga Bahan Pokok Kota Bontang
 Dinas Koperasi, Usaha Mikro, Perindustrian dan Perdagangan
 
 Dependensi:
-  pip install streamlit pandas plotly numpy openpyxl
+  pip install streamlit pandas plotly numpy
 
 Penggunaan:
   streamlit run dashboard_mata_pasar.py
@@ -16,7 +16,6 @@ import pandas as pd
 import numpy as np
 import plotly.express as px
 import plotly.graph_objects as go
-from io import BytesIO
 
 # ── Konfigurasi halaman ───────────────────────────────────────────────
 
@@ -178,9 +177,16 @@ def calc_disparitas(monthly):
     city = city.merge(pasar_max, on=grp, how='left')
     city = city.merge(pasar_min, on=grp, how='left')
 
-    city['disparitas_kak'] = np.where(
+    # Koefisien Variasi (KV) = SD / Rata-rata × 100%
+    city['kv'] = np.where(
         city['harga_kota'] > 0,
-        (city['harga_max'] - city['harga_min']) / city['harga_kota'] * 100, 0)
+        (city['sd_kota'] / city['harga_kota']) * 100, 0)
+
+    # Klasifikasi KV
+    city['kategori_kv'] = city['kv'].apply(lambda x:
+        'Sangat Rendah' if x < 1 else
+        'Rendah' if x < 3 else
+        'Sedang' if x < 5 else 'Tinggi')
 
     disp = monthly.merge(city, on=grp)
     disp['z_score'] = np.where(
@@ -266,9 +272,13 @@ if halaman == "📋 Monitoring Harga BAPOK":
         f'{n_total_kom} komoditas</p></div>', unsafe_allow_html=True)
 
     stab_bulan = stab[(stab['bulan'] == bulan_selected) & (stab['stabil'].notna())]
-    n_disp_wajar = int((disp_bulan['disparitas_kak'] <= 1).sum())
-    n_disp_tidak = n_total_kom - n_disp_wajar
-    pct_disp_tidak = (n_disp_tidak / n_total_kom * 100) if n_total_kom > 0 else 0
+
+    # Hitung jumlah per klasifikasi KV
+    n_kv_sangat_rendah = int((disp_bulan['kv'] < 1).sum()) if n_total_kom > 0 else 0
+    n_kv_rendah = int(((disp_bulan['kv'] >= 1) & (disp_bulan['kv'] < 3)).sum()) if n_total_kom > 0 else 0
+    n_kv_sedang = int(((disp_bulan['kv'] >= 3) & (disp_bulan['kv'] < 5)).sum()) if n_total_kom > 0 else 0
+    n_kv_tinggi = int((disp_bulan['kv'] >= 5).sum()) if n_total_kom > 0 else 0
+    kv_rata2 = disp_bulan['kv'].mean() if n_total_kom > 0 else 0
 
     if len(stab_bulan) > 0:
         pct_stabil = stab_bulan['stabil'].mean() * 100
@@ -281,21 +291,19 @@ if halaman == "📋 Monitoring Harga BAPOK":
     # --- KPI Cards ---
     col1, col2 = st.columns(2)
     with col1:
-        clr = '#1D9E75' if pct_disp_tidak == 0 else '#D85A30'
-        icon = "🟢" if pct_disp_tidak == 0 else "🔴"
+        clr = '#1D9E75' if kv_rata2 < 1 else '#D85A30'
+        icon = "🟢" if kv_rata2 < 1 else "🔴"
         st.markdown(
             f'<div style="background:#f8f9fa;border-radius:12px;padding:1.2rem;border-left:4px solid {clr};">'
-            f'<p style="color:#555;font-size:.85rem;margin:0 0 .2rem;">Indikator 1 — Persentase Komoditas dengan Disparitas Harga di Atas Target</p>'
-            f'<h2 style="margin:.3rem 0;">{icon} {fid(pct_disp_tidak)}%</h2>'
+            f'<p style="color:#555;font-size:.85rem;margin:0 0 .2rem;">Indikator 1 — Disparitas Harga Antar Pasar</p>'
+            f'<h2 style="margin:.3rem 0;">{icon} KV rata-rata: {fid(kv_rata2)}%</h2>'
             f'<p style="color:#666;font-size:.8rem;margin:0;line-height:1.7;">'
-            f'Disparitas harga setiap komoditas dihitung dengan cara:<br>'
-            f'• Mengambil harga rata-rata bulanan di masing-masing dari 3 pasar<br>'
-            f'• Menghitung selisih harga termahal dan termurah<br>'
-            f'• Membaginya dengan rata-rata harga dari 3 pasar, dikali 100%<br><br>'
-            f'Target Disparitas Kota Bontang: <b>≤ 1%</b> per komoditas<br><br>'
+            f'Disparitas diukur dengan <b>Koefisien Variasi (KV)</b> = standar deviasi harga di 3 pasar dibagi rata-rata harga, dikali 100%.<br><br>'
             f'Dari <b>{n_total_kom}</b> komoditas yang dipantau:<br>'
-            f'• <b>{n_disp_tidak}</b> komoditas ({fid(pct_disp_tidak)}%) disparitasnya di atas 1%<br>'
-            f'• <b>{n_disp_wajar}</b> komoditas ({fid(100-pct_disp_tidak)}%) memenuhi target'
+            f'• <b>{n_kv_sangat_rendah}</b> komoditas KV &lt; 1% (Sangat Rendah — harga seragam)<br>'
+            f'• <b>{n_kv_rendah}</b> komoditas KV 1–3% (Rendah — variasi wajar)<br>'
+            f'• <b>{n_kv_sedang}</b> komoditas KV 3–5% (Sedang — perlu dipantau)<br>'
+            f'• <b>{n_kv_tinggi}</b> komoditas KV &gt; 5% (Tinggi — perlu intervensi)'
             f'</p></div>', unsafe_allow_html=True)
 
     with col2:
@@ -327,9 +335,44 @@ if halaman == "📋 Monitoring Harga BAPOK":
 
     st.markdown("")
 
-    # ── PENJELASAN Z-SCORE ────────────────────────────────────────────
-    with st.expander("📖 💡 Mengapa menggunakan z-score untuk mengukur kestabilan harga? (klik untuk membaca)", expanded=False):
-        st.markdown("""
+    # ── PENJELASAN KV DAN Z-SCORE ─────────────────────────────────────
+    col_exp1, col_exp2 = st.columns(2)
+
+    with col_exp1:
+        with st.expander("📖 💡 Mengapa menggunakan Koefisien Variasi untuk mengukur disparitas? (klik untuk membaca)", expanded=False):
+            st.markdown("""
+**Masalah yang ingin diselesaikan:**
+
+Selisih harga Rp 5.000 punya arti yang berbeda tergantung komoditasnya. Untuk Telur (Rp 2.000/butir), selisih Rp 5.000 artinya harga bisa 2,5 kali lipat lebih mahal di satu pasar. Tapi untuk Daging Sapi (Rp 160.000/kg), selisih Rp 5.000 hanya 3% perbedaan. Kita butuh ukuran yang adil untuk semua komoditas.
+
+**Solusi: Koefisien Variasi (KV)**
+
+KV mengukur seberapa besar perbedaan harga antar pasar **relatif terhadap level harganya**. Rumusnya:
+""")
+            st.latex(r"KV = \frac{\text{Standar Deviasi harga di 3 pasar}}{\text{Rata-rata harga di 3 pasar}} \times 100\%")
+            st.markdown("""
+**Contoh dari data Januari 2026:**
+
+| Komoditas | Rawa Indah | Telihan | Citra Mas | Rata-rata | SD | KV |
+|---|---|---|---|---|---|---|
+| Beras Tawon | Rp 16.100 | Rp 16.100 | Rp 16.100 | Rp 16.100 | 0 | **0,0%** 🟢 |
+| Cabe Rawit | Rp 80.000 | Rp 100.000 | Rp 100.000 | Rp 93.333 | Rp 11.547 | **12,4%** 🔴 |
+
+KV Beras Tawon = 0% karena harganya identik di ketiga pasar. KV Cabe Rawit = 12,4% karena Rawa Indah menjual Rp 20.000 lebih murah dari dua pasar lainnya.
+
+**Klasifikasi KV:**
+
+| KV (%) | Kategori | Arti | Tindakan |
+|---|---|---|---|
+| < 1% | **Sangat Rendah** 🟢 | Harga seragam | Tidak perlu tindakan |
+| 1% – 3% | **Rendah** 🟡 | Variasi wajar | Amati |
+| 3% – 5% | **Sedang** 🟠 | Perbedaan cukup terlihat | Pantau |
+| > 5% | **Tinggi** 🔴 | Sangat bervariasi | Intervensi |
+""")
+
+    with col_exp2:
+        with st.expander("📖 💡 Mengapa menggunakan z-score untuk mengukur kestabilan harga? (klik untuk membaca)", expanded=False):
+            st.markdown("""
 **Masalah yang ingin diselesaikan:**
 
 Setiap komoditas punya karakter harga yang berbeda. Cabe rawit biasanya berfluktuasi Rp 10.000 – Rp 20.000 per bulan, sedangkan beras hanya Rp 100 – Rp 200. Kalau kita pakai patokan yang sama (misalnya "naik Rp 5.000 = tidak stabil"), maka beras selalu dianggap tidak stabil tapi cabe selalu dianggap stabil — padahal kenyataannya bisa sebaliknya.
@@ -338,8 +381,8 @@ Setiap komoditas punya karakter harga yang berbeda. Cabe rawit biasanya berflukt
 
 Z-score mengukur seberapa jauh perubahan harga bulan ini **dibandingkan dengan pola biasanya** untuk komoditas tersebut. Rumusnya:
 """)
-        st.latex(r"z = \frac{\text{Perubahan harga bulan ini} - \text{Rata-rata perubahan historis}}{\text{Standar deviasi perubahan historis}}")
-        st.markdown("""
+            st.latex(r"z = \frac{\text{Perubahan harga bulan ini} - \text{Rata-rata perubahan historis}}{\text{Standar deviasi perubahan historis}}")
+            st.markdown("""
 **Cara membaca z-score:**
 
 - **z = 0** → perubahan harga bulan ini **persis sama** dengan pola biasanya
@@ -371,50 +414,64 @@ Beras Tawon yang harganya Rp 16.100/kg biasanya hanya berubah sekitar Rp 200 per
     # ── TABEL DISPARITAS ──────────────────────────────────────────────
     st.markdown("---")
     st.markdown("### Disparitas harga antar pasar")
-    st.caption("Semua komoditas dengan disparitas di atas target 1%, dikelompokkan berdasarkan tingkat disparitas")
+    st.caption("Semua komoditas dikelompokkan berdasarkan Koefisien Variasi (KV)")
 
     if n_total_kom > 0:
-        disp_all = disp_bulan[disp_bulan['disparitas_kak'] > 1].copy().sort_values('disparitas_kak', ascending=False)
+        disp_all = disp_bulan.copy().sort_values('kv', ascending=False)
         disp_all['harga_min'] = disp_all['harga_min'].round(0).astype(int)
         disp_all['harga_max'] = disp_all['harga_max'].round(0).astype(int)
         disp_all['harga_kota'] = disp_all['harga_kota'].round(0).astype(int)
-        disp_all['disparitas_kak'] = disp_all['disparitas_kak'].round(1)
+        disp_all['kv'] = disp_all['kv'].round(1)
 
         groups = [
-            ("Intervensi segera", "> 30%",  disp_all[disp_all['disparitas_kak'] > 30],  "🔴🔴",
-             "Selisih harga antar pasar sangat tinggi — koordinasi TPID dan perbaikan rantai distribusi mendesak"),
-            ("Perlu perhatian", "20 – 30%", disp_all[(disp_all['disparitas_kak'] > 20) & (disp_all['disparitas_kak'] <= 30)], "🔴",
-             "Selisih harga antar pasar tinggi — perlu investigasi penyebab dan pemantauan intensif"),
-            ("Pantau ketat", "10 – 20%", disp_all[(disp_all['disparitas_kak'] > 10) & (disp_all['disparitas_kak'] <= 20)], "🟠",
-             "Selisih harga antar pasar cukup tinggi — pantau perkembangan di periode berikutnya"),
-            ("Amati", "1 – 10%",  disp_all[(disp_all['disparitas_kak'] > 1) & (disp_all['disparitas_kak'] <= 10)],  "🟡",
-             "Selisih harga antar pasar masih di atas target — amati apakah tren membaik atau memburuk"),
+            ("Intervensi", "KV > 5%", disp_all[disp_all['kv'] >= 5], "🔴",
+             "Harga antar pasar sangat bervariasi — kemungkinan ada masalah distribusi atau kebijakan harga yang tidak seragam"),
+            ("Perlu perhatian", "KV 3–5%", disp_all[(disp_all['kv'] >= 3) & (disp_all['kv'] < 5)], "🟠",
+             "Terdapat perbedaan harga yang cukup terlihat antar pasar — perlu dipantau"),
+            ("Variasi wajar", "KV 1–3%", disp_all[(disp_all['kv'] >= 1) & (disp_all['kv'] < 3)], "🟡",
+             "Ada sedikit variasi harga, tetapi masih dalam batas wajar"),
+            ("Harga seragam", "KV < 1%", disp_all[disp_all['kv'] < 1], "🟢",
+             "Harga hampir seragam di semua pasar, distribusi sangat merata"),
         ]
+
+        # Ringkasan jumlah per kelompok
+        kcol1, kcol2, kcol3, kcol4 = st.columns(4)
+        kv_cols = [kcol1, kcol2, kcol3, kcol4]
+        kv_colors = ["#A32D2D", "#D85A30", "#BA7517", "#1D9E75"]
+        for i, (label, rentang, grp, icon, desc) in enumerate(groups):
+            with kv_cols[i]:
+                st.markdown(
+                    f'<div style="background:{kv_colors[i]};color:white;border-radius:8px;padding:10px;text-align:center;">'
+                    f'<div style="font-size:11px;">{icon} {label}</div>'
+                    f'<div style="font-size:22px;font-weight:500;">{len(grp)}</div>'
+                    f'<div style="font-size:10px;opacity:.8;">{rentang}</div></div>',
+                    unsafe_allow_html=True)
+
+        st.markdown("")
 
         for label, rentang, grp, icon, desc in groups:
             if len(grp) == 0: continue
-            with st.expander(f"{icon} {label} (disparitas {rentang}) — {len(grp)} komoditas", expanded=(rentang == "> 30%")):
+            with st.expander(f"{icon} {label} ({rentang}) — {len(grp)} komoditas", expanded=(label == "Intervensi")):
                 st.caption(desc)
                 tbl = grp[['nama_bahan_pokok',
                            'harga_min', 'pasar_termurah', 'harga_max', 'pasar_termahal',
-                           'harga_kota', 'disparitas_kak']].copy()
+                           'harga_kota', 'kv']].copy()
                 tbl = tbl.reset_index(drop=True); tbl.index += 1
                 tbl.columns = ['Komoditas',
                                'Harga Termurah', 'Pasar Termurah',
                                'Harga Termahal', 'Pasar Termahal',
-                               'Rata-rata Kota', 'Disparitas (%)']
+                               'Rata-rata Kota', 'KV (%)']
                 tbl = format_table(tbl, {
                     'Harga Termurah': fmt_rp, 'Harga Termahal': fmt_rp,
-                    'Rata-rata Kota': fmt_rp, 'Disparitas (%)': fmt_pct,
+                    'Rata-rata Kota': fmt_rp, 'KV (%)': fmt_pct,
                 })
                 st.dataframe(tbl, use_container_width=True)
 
-        n_30 = len(disp_all[disp_all['disparitas_kak'] > 30])
-        n_20 = len(disp_all[(disp_all['disparitas_kak'] > 20) & (disp_all['disparitas_kak'] <= 30)])
-        n_10 = len(disp_all[(disp_all['disparitas_kak'] > 10) & (disp_all['disparitas_kak'] <= 20)])
-        n_1 = len(disp_all[(disp_all['disparitas_kak'] > 1) & (disp_all['disparitas_kak'] <= 10)])
-        st.caption(f"Ringkasan: > 30% = {n_30}, 20–30% = {n_20}, 10–20% = {n_10}, 1–10% = {n_1}. "
-                   f"Disparitas ≤ 1% (memenuhi target) = {n_disp_wajar} komoditas.")
+        st.caption(
+            f"Ringkasan: KV > 5% = {n_kv_tinggi}, KV 3–5% = {n_kv_sedang}, "
+            f"KV 1–3% = {n_kv_rendah}, KV < 1% = {n_kv_sangat_rendah}. "
+            f"KV = Koefisien Variasi = (Standar Deviasi / Rata-rata) × 100%"
+        )
 
     # ── TABEL STABILISASI ─────────────────────────────────────────────
     st.markdown("---")
@@ -590,30 +647,43 @@ elif halaman == "📊 Disparitas Harga":
                 f"di zona merah → pasar ini cenderung lebih mahal secara umum"
             )
 
-    # Grafik batang disparitas
-    st.subheader("Disparitas per komoditas")
+    # Grafik batang KV
+    st.subheader("Koefisien Variasi (KV) per komoditas")
     if len(summ_b) > 0:
-        ss = summ_b.sort_values('disparitas_kak', ascending=True)
-        fig_bar = px.bar(ss, x='disparitas_kak', y='nama_bahan_pokok', orientation='h',
-                         color='disparitas_kak',
-                         color_continuous_scale=['#5DCAA5','#EF9F27','#D85A30','#A32D2D'],
-                         labels={'disparitas_kak':'Disparitas (%)','nama_bahan_pokok':''})
-        fig_bar.add_vline(x=1, line_dash="dash", line_color="red", annotation_text="Target 1%")
-        fig_bar.update_layout(height=max(500, len(ss)*22), margin=dict(l=10,r=10,t=30,b=10), showlegend=False)
+        ss = summ_b.copy()
+        # Urutan: KV=0 di atas, lalu KV terbesar → terkecil
+        ss['sort_key'] = ss['kv'].apply(lambda x: -1 if x < 0.01 else x)
+        ss = ss.sort_values('sort_key', ascending=True)
+        ss = ss.drop(columns=['sort_key'])
+        fig_bar = px.bar(ss, x='kv', y='nama_bahan_pokok', orientation='h',
+                         color='kv',
+                         color_continuous_scale=['#1D9E75', '#5DCAA5', '#BA7517', '#D85A30', '#A32D2D'],
+                         labels={'kv': 'KV (%)', 'nama_bahan_pokok': ''})
+        fig_bar.add_vline(x=1, line_dash="dash", line_color="#1D9E75", line_width=3)
+        fig_bar.add_vline(x=3, line_dash="dash", line_color="#D85A30", line_width=3)
+        fig_bar.add_vline(x=5, line_dash="dash", line_color="#A32D2D", line_width=3)
+        fig_bar.update_layout(
+            height=max(500, len(ss)*22),
+            margin=dict(l=10, r=10, t=30, b=10),
+            showlegend=False,
+            xaxis=dict(title='KV (%)'),
+            yaxis=dict(autorange='reversed'),
+            coloraxis_colorbar=dict(title='KV (%)'),
+        )
         st.plotly_chart(fig_bar, use_container_width=True)
 
-        with st.expander("📖 💡 Cara membaca grafik disparitas (klik untuk membaca)", expanded=False):
+        with st.expander("📖 💡 Cara membaca grafik KV (klik untuk membaca)", expanded=False):
             st.markdown("""
 **Apa yang ditampilkan:**
 - Setiap batang horizontal = satu komoditas
-- Panjang batang = angka disparitas (%), yaitu selisih harga termahal dan termurah dibagi rata-rata harga dari 3 pasar
-- Garis merah putus-putus = target 1% dari Kota Bontang
+- Panjang batang = Koefisien Variasi (KV), yaitu standar deviasi harga dibagi rata-rata harga dari 3 pasar × 100%
+- Garis putus-putus menandai batas klasifikasi: hijau (1%), orange (3%), merah (5%)
 
 **Cara membaca:**
-- Batang yang **melewati garis merah** (> 1%) → komoditas ini belum memenuhi target disparitas
-- Semakin **panjang dan merah** batangnya → semakin besar kesenjangan harga antar pasar
-- Batang **pendek dan hijau** (≤ 1%) → harga komoditas ini sudah seragam di ketiga pasar
-- Komoditas diurutkan dari disparitas terbesar (atas) ke terkecil (bawah)
+- Batang **pendek dan hijau** (KV < 1%) → harga komoditas ini sangat seragam di ketiga pasar
+- Batang **kuning** (KV 1–3%) → ada sedikit variasi, masih wajar
+- Batang **orange** (KV 3–5%) → perbedaan cukup terlihat, perlu dipantau
+- Batang **panjang dan merah** (KV > 5%) → harga sangat bervariasi, perlu intervensi
 """)
 
     # Perbandingan harga 3 pasar
@@ -645,29 +715,32 @@ elif halaman == "📊 Disparitas Harga":
 - Jika ada batang yang **jauh lebih tinggi atau rendah** → pasar tersebut perlu ditelusuri penyebabnya
 """)
     if len(bulan_list) > 1:
-        st.subheader("Tren persentase komoditas dengan disparitas di atas target 1%")
-        pct_above = disp_summary.groupby('bulan').apply(
-            lambda x: (x['disparitas_kak'] > 1).sum() / len(x) * 100
-        ).reset_index()
-        pct_above.columns = ['bulan', 'pct_diatas_target']
-        fig_t = px.line(pct_above, x='bulan', y='pct_diatas_target', markers=True,
-                        labels={'pct_diatas_target': 'Komoditas di Atas Target (%)','bulan': 'Bulan'})
-        fig_t.add_hline(y=0, line_dash="dash", line_color="green", opacity=0.5,
-                        annotation_text="Ideal: 0% (semua komoditas memenuhi target)")
-        fig_t.update_layout(height=350, yaxis=dict(range=[0, 105]))
+        st.subheader("Tren Koefisien Variasi rata-rata per bulan")
+        kv_trend = disp_summary.groupby('bulan')['kv'].mean().reset_index()
+        kv_trend.columns = ['bulan', 'kv_rata2']
+        fig_t = px.line(kv_trend, x='bulan', y='kv_rata2', markers=True,
+                        labels={'kv_rata2': 'KV rata-rata (%)','bulan': 'Bulan'})
+        fig_t.add_hline(y=1, line_dash="dash", line_color="green",
+                        annotation_text="Sangat Rendah < 1%")
+        fig_t.add_hline(y=3, line_dash="dash", line_color="orange",
+                        annotation_text="Sedang 3%")
+        fig_t.add_hline(y=5, line_dash="dash", line_color="red",
+                        annotation_text="Tinggi 5%")
+        fig_t.update_layout(height=350)
         st.plotly_chart(fig_t, use_container_width=True)
 
-        with st.expander("📖 💡 Cara membaca grafik tren disparitas (klik untuk membaca)", expanded=False):
+        with st.expander("📖 💡 Cara membaca grafik tren KV (klik untuk membaca)", expanded=False):
             st.markdown("""
 **Apa yang ditampilkan:**
 - Sumbu horizontal = bulan
-- Sumbu vertikal = persentase komoditas yang disparitasnya di atas target 1%
-- Garis hijau putus-putus = kondisi ideal (0%, artinya semua komoditas memenuhi target)
+- Sumbu vertikal = rata-rata Koefisien Variasi (KV) dari seluruh komoditas
+- Garis batas: hijau (1% — sangat rendah), orange (3% — sedang), merah (5% — tinggi)
 
 **Cara membaca:**
-- Garis **menurun** dari bulan ke bulan → disparitas harga antar pasar **membaik** (lebih banyak komoditas memenuhi target)
-- Garis **naik** → disparitas **memburuk** (lebih banyak komoditas yang harganya tidak seragam antar pasar)
-- Semakin **dekat ke 0%** → semakin baik kinerja pengendalian harga
+- Garis **menurun** dari bulan ke bulan → disparitas harga antar pasar **membaik**
+- Garis **naik** → disparitas **memburuk**
+- Garis **di bawah 1%** → kondisi ideal, harga hampir seragam di semua pasar
+- Garis **di atas 5%** → perlu intervensi untuk memperbaiki distribusi
 """)
 
 
