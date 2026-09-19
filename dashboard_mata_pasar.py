@@ -591,7 +591,7 @@ elif halaman == "📊 Disparitas Harga":
             )
 
     # Grafik batang disparitas
-    st.subheader("Disparitas per komoditas (rumus KAK)")
+    st.subheader("Disparitas per komoditas")
     if len(summ_b) > 0:
         ss = summ_b.sort_values('disparitas_kak', ascending=True)
         fig_bar = px.bar(ss, x='disparitas_kak', y='nama_bahan_pokok', orientation='h',
