@@ -182,11 +182,10 @@ def calc_disparitas(monthly):
         city['harga_kota'] > 0,
         (city['sd_kota'] / city['harga_kota']) * 100, 0)
 
-    # Klasifikasi KV
+    # Klasifikasi KV (3 kelompok, mengacu ambang Bapanas)
     city['kategori_kv'] = city['kv'].apply(lambda x:
-        'Sangat Rendah' if x < 1 else
-        'Rendah' if x < 3 else
-        'Sedang' if x < 5 else 'Tinggi')
+        'Rendah' if x < 10 else
+        'Sedang' if x < 15 else 'Tinggi')
 
     disp = monthly.merge(city, on=grp)
     disp['z_score'] = np.where(
@@ -273,11 +272,10 @@ if halaman == "📋 Monitoring Harga BAPOK":
 
     stab_bulan = stab[(stab['bulan'] == bulan_selected) & (stab['stabil'].notna())]
 
-    # Hitung jumlah per klasifikasi KV
-    n_kv_sangat_rendah = int((disp_bulan['kv'] < 1).sum()) if n_total_kom > 0 else 0
-    n_kv_rendah = int(((disp_bulan['kv'] >= 1) & (disp_bulan['kv'] < 3)).sum()) if n_total_kom > 0 else 0
-    n_kv_sedang = int(((disp_bulan['kv'] >= 3) & (disp_bulan['kv'] < 5)).sum()) if n_total_kom > 0 else 0
-    n_kv_tinggi = int((disp_bulan['kv'] >= 5).sum()) if n_total_kom > 0 else 0
+    # Hitung jumlah per klasifikasi KV (3 kelompok)
+    n_kv_rendah = int((disp_bulan['kv'] < 10).sum()) if n_total_kom > 0 else 0
+    n_kv_sedang = int(((disp_bulan['kv'] >= 10) & (disp_bulan['kv'] < 15)).sum()) if n_total_kom > 0 else 0
+    n_kv_tinggi = int((disp_bulan['kv'] >= 15).sum()) if n_total_kom > 0 else 0
     kv_rata2 = disp_bulan['kv'].mean() if n_total_kom > 0 else 0
 
     if len(stab_bulan) > 0:
@@ -288,22 +286,23 @@ if halaman == "📋 Monitoring Harga BAPOK":
     else:
         pct_stabil = None; n_stabil = 0; n_total_stab = 0; n_tidak_stabil = 0
 
-    # --- KPI Cards ---
+    # --- KPI Cards (tinggi seragam dengan min-height) ---
+    KPI_BOX = "background:#f8f9fa;border-radius:12px;padding:1.2rem;min-height:320px;display:flex;flex-direction:column;justify-content:flex-start;"
+
     col1, col2 = st.columns(2)
     with col1:
-        clr = '#1D9E75' if kv_rata2 < 1 else '#D85A30'
-        icon = "🟢" if kv_rata2 < 1 else "🔴"
+        clr = '#1D9E75' if kv_rata2 < 10 else '#D85A30' if kv_rata2 < 15 else '#A32D2D'
+        icon = "🟢" if kv_rata2 < 10 else "🟠" if kv_rata2 < 15 else "🔴"
         st.markdown(
-            f'<div style="background:#f8f9fa;border-radius:12px;padding:1.2rem;border-left:4px solid {clr};">'
+            f'<div style="{KPI_BOX}border-left:4px solid {clr};">'
             f'<p style="color:#555;font-size:.85rem;margin:0 0 .2rem;">Indikator 1 — Disparitas Harga Antar Pasar</p>'
             f'<h2 style="margin:.3rem 0;">{icon} KV rata-rata: {fid(kv_rata2)}%</h2>'
             f'<p style="color:#666;font-size:.8rem;margin:0;line-height:1.7;">'
             f'Disparitas diukur dengan <b>Koefisien Variasi (KV)</b> = standar deviasi harga di 3 pasar dibagi rata-rata harga, dikali 100%.<br><br>'
             f'Dari <b>{n_total_kom}</b> komoditas yang dipantau:<br>'
-            f'• <b>{n_kv_sangat_rendah}</b> komoditas KV &lt; 1% (Sangat Rendah — harga seragam)<br>'
-            f'• <b>{n_kv_rendah}</b> komoditas KV 1–3% (Rendah — variasi wajar)<br>'
-            f'• <b>{n_kv_sedang}</b> komoditas KV 3–5% (Sedang — perlu dipantau)<br>'
-            f'• <b>{n_kv_tinggi}</b> komoditas KV &gt; 5% (Tinggi — perlu intervensi)'
+            f'• <b>{n_kv_rendah}</b> komoditas KV &lt; 10% (Rendah — monitoring rutin)<br>'
+            f'• <b>{n_kv_sedang}</b> komoditas KV 10–15% (Sedang — analisis penyebab)<br>'
+            f'• <b>{n_kv_tinggi}</b> komoditas KV &gt; 15% (Tinggi — verifikasi lapangan &amp; intervensi)'
             f'</p></div>', unsafe_allow_html=True)
 
     with col2:
@@ -312,7 +311,7 @@ if halaman == "📋 Monitoring Harga BAPOK":
             icon2 = "🟢" if pct_stabil >= 71.5 else "🔴"
             tercapai = "tercapai ✓" if pct_stabil >= 71.5 else "belum tercapai ✗"
             st.markdown(
-                f'<div style="background:#f8f9fa;border-radius:12px;padding:1.2rem;border-left:4px solid {clr2};">'
+                f'<div style="{KPI_BOX}border-left:4px solid {clr2};">'
                 f'<p style="color:#555;font-size:.85rem;margin:0 0 .2rem;">Indikator 2 — Persentase Komoditas yang Harganya Stabil</p>'
                 f'<h2 style="margin:.3rem 0;">{icon2} {fid(pct_stabil)}%</h2>'
                 f'<p style="color:#666;font-size:.8rem;margin:0;line-height:1.7;">'
@@ -326,7 +325,7 @@ if halaman == "📋 Monitoring Harga BAPOK":
                 f'</p></div>', unsafe_allow_html=True)
         else:
             st.markdown(
-                '<div style="background:#f8f9fa;border-radius:12px;padding:1.2rem;border-left:4px solid #888;">'
+                f'<div style="{KPI_BOX}border-left:4px solid #888;">'
                 '<p style="color:#555;font-size:.85rem;margin:0 0 .2rem;">Indikator 2 — Persentase Komoditas yang Harganya Stabil</p>'
                 '<h2 style="margin:.3rem 0;">⏳ Belum tersedia</h2>'
                 '<p style="color:#666;font-size:.8rem;margin:0;line-height:1.7;">'
@@ -347,10 +346,26 @@ Selisih harga Rp 5.000 punya arti yang berbeda tergantung komoditasnya. Untuk Te
 
 **Solusi: Koefisien Variasi (KV)**
 
-KV mengukur seberapa besar perbedaan harga antar pasar **relatif terhadap level harganya**. Rumusnya:
+KV mengukur seberapa besar perbedaan harga antar pasar **relatif terhadap level harganya**. KV dihitung dari dua komponen: **rata-rata** dan **standar deviasi (SD)**.
+
+**Langkah 1 — Rata-rata harga dari 3 pasar:**
 """)
-            st.latex(r"KV = \frac{\text{Standar Deviasi harga di 3 pasar}}{\text{Rata-rata harga di 3 pasar}} \times 100\%")
+            st.latex(r"\bar{X} = \frac{X_1 + X_2 + X_3}{3}")
+            st.markdown(r"""
+Dimana $X_1, X_2, X_3$ adalah harga rata-rata bulanan di masing-masing pasar (Rawa Indah, Telihan, Citra Mas).
+
+**Langkah 2 — Standar Deviasi (SD):**
+""")
+            st.latex(r"SD = \sqrt{\frac{(X_1 - \bar{X})^2 + (X_2 - \bar{X})^2 + (X_3 - \bar{X})^2}{3 - 1}}")
+            st.markdown(r"""
+SD mengukur seberapa jauh harga di masing-masing pasar menyimpang dari rata-ratanya. Pembagi $n-1 = 2$ digunakan karena kita menghitung SD sampel (3 pasar).
+
+**Langkah 3 — Koefisien Variasi (KV):**
+""")
+            st.latex(r"KV = \frac{SD}{\bar{X}} \times 100\%")
             st.markdown("""
+KV menyatakan SD sebagai persentase dari rata-rata, sehingga **adil untuk membandingkan komoditas dengan level harga yang berbeda**.
+
 **Contoh dari data Januari 2026:**
 
 | Komoditas | Rawa Indah | Telihan | Citra Mas | Rata-rata | SD | KV |
@@ -358,16 +373,20 @@ KV mengukur seberapa besar perbedaan harga antar pasar **relatif terhadap level 
 | Beras Tawon | Rp 16.100 | Rp 16.100 | Rp 16.100 | Rp 16.100 | 0 | **0,0%** 🟢 |
 | Cabe Rawit | Rp 80.000 | Rp 100.000 | Rp 100.000 | Rp 93.333 | Rp 11.547 | **12,4%** 🔴 |
 
+**Perhitungan Cabe Rawit:**
+- Rata-rata = (80.000 + 100.000 + 100.000) / 3 = **Rp 93.333**
+- SD = √[((80.000−93.333)² + (100.000−93.333)² + (100.000−93.333)²) / 2] = √[(177.775.556 + 44.448.889 + 44.448.889) / 2] = √133.336.667 ≈ **Rp 11.547**
+- KV = 11.547 / 93.333 × 100% = **12,4%**
+
 KV Beras Tawon = 0% karena harganya identik di ketiga pasar. KV Cabe Rawit = 12,4% karena Rawa Indah menjual Rp 20.000 lebih murah dari dua pasar lainnya.
 
 **Klasifikasi KV:**
 
-| KV (%) | Kategori | Arti | Tindakan |
+| Nilai Disparitas | Kategori Operasional | Interpretasi | Tindakan Analisis |
 |---|---|---|---|
-| < 1% | **Sangat Rendah** 🟢 | Harga seragam | Tidak perlu tindakan |
-| 1% – 3% | **Rendah** 🟡 | Variasi wajar | Amati |
-| 3% – 5% | **Sedang** 🟠 | Perbedaan cukup terlihat | Pantau |
-| > 5% | **Tinggi** 🔴 | Sangat bervariasi | Intervensi |
+| < 10% | **Rendah** 🟢 | Perbedaan harga relatif kecil dan masih berada di sekitar ambang 10% yang digunakan Bapanas | Monitoring rutin; telusuri jika tren meningkat |
+| 10% – 15% | **Sedang** 🟠 | Perbedaan mulai material dan perlu dicermati dari sisi pasokan, distribusi, biaya angkut, dan struktur pasar | Analisis penyebab dan pantau pasar penyumbang disparitas |
+| > 15% | **Tinggi** 🔴 | Rentang harga antar pasar cukup besar dan berpotensi menunjukkan persoalan distribusi, pasokan, atau karakteristik pasar | Prioritaskan verifikasi lapangan dan analisis rantai pasok/intervensi |
 """)
 
     with col_exp2:
@@ -379,10 +398,32 @@ Setiap komoditas punya karakter harga yang berbeda. Cabe rawit biasanya berflukt
 
 **Solusi: z-score**
 
-Z-score mengukur seberapa jauh perubahan harga bulan ini **dibandingkan dengan pola biasanya** untuk komoditas tersebut. Rumusnya:
+Z-score mengukur seberapa jauh perubahan harga bulan ini **dibandingkan dengan pola biasanya** untuk komoditas tersebut. Z-score dihitung melalui beberapa langkah:
+
+**Langkah 1 — Hitung perubahan harga bulanan (Δ harga):**
 """)
-            st.latex(r"z = \frac{\text{Perubahan harga bulan ini} - \text{Rata-rata perubahan historis}}{\text{Standar deviasi perubahan historis}}")
+            st.latex(r"\Delta_t = \bar{X}_t - \bar{X}_{t-1}")
+            st.markdown(r"""
+Dimana $\bar{X}_t$ adalah rata-rata harga kota (dari 3 pasar) bulan ini, dan $\bar{X}_{t-1}$ adalah rata-rata harga kota bulan lalu. Perubahan ini dihitung untuk setiap bulan yang tersedia.
+
+**Langkah 2 — Rata-rata perubahan historis (μ):**
+""")
+            st.latex(r"\mu_\Delta = \frac{\Delta_1 + \Delta_2 + \cdots + \Delta_n}{n}")
+            st.markdown(r"""
+Rata-rata dari seluruh perubahan harga bulanan ($\Delta$) yang pernah tercatat untuk komoditas tersebut. Ini menunjukkan **pola perubahan yang biasa terjadi**.
+
+**Langkah 3 — Standar deviasi perubahan historis (σ):**
+""")
+            st.latex(r"\sigma_\Delta = \sqrt{\frac{\sum_{i=1}^{n}(\Delta_i - \mu_\Delta)^2}{n - 1}}")
+            st.markdown(r"""
+Standar deviasi mengukur seberapa besar variasi perubahan harga dari bulan ke bulan. Semakin besar $\sigma$, semakin fluktuatif komoditas tersebut secara historis.
+
+**Langkah 4 — Z-score:**
+""")
+            st.latex(r"z = \frac{\Delta_{\text{bulan ini}} - \mu_\Delta}{\sigma_\Delta}")
             st.markdown("""
+Z-score membandingkan perubahan harga bulan ini dengan pola historisnya. Hasilnya menunjukkan **berapa standar deviasi** perubahan bulan ini menyimpang dari rata-rata perubahannya.
+
 **Cara membaca z-score:**
 
 - **z = 0** → perubahan harga bulan ini **persis sama** dengan pola biasanya
@@ -424,20 +465,18 @@ Beras Tawon yang harganya Rp 16.100/kg biasanya hanya berubah sekitar Rp 200 per
         disp_all['kv'] = disp_all['kv'].round(1)
 
         groups = [
-            ("Intervensi", "KV > 5%", disp_all[disp_all['kv'] >= 5], "🔴",
-             "Harga antar pasar sangat bervariasi — kemungkinan ada masalah distribusi atau kebijakan harga yang tidak seragam"),
-            ("Perlu perhatian", "KV 3–5%", disp_all[(disp_all['kv'] >= 3) & (disp_all['kv'] < 5)], "🟠",
-             "Terdapat perbedaan harga yang cukup terlihat antar pasar — perlu dipantau"),
-            ("Variasi wajar", "KV 1–3%", disp_all[(disp_all['kv'] >= 1) & (disp_all['kv'] < 3)], "🟡",
-             "Ada sedikit variasi harga, tetapi masih dalam batas wajar"),
-            ("Harga seragam", "KV < 1%", disp_all[disp_all['kv'] < 1], "🟢",
-             "Harga hampir seragam di semua pasar, distribusi sangat merata"),
+            ("Tinggi", "KV > 15%", disp_all[disp_all['kv'] >= 15], "🔴",
+             "Rentang harga antar pasar cukup besar — prioritaskan verifikasi lapangan dan analisis rantai pasok/intervensi"),
+            ("Sedang", "KV 10–15%", disp_all[(disp_all['kv'] >= 10) & (disp_all['kv'] < 15)], "🟠",
+             "Perbedaan mulai material — analisis penyebab dan pantau pasar penyumbang disparitas"),
+            ("Rendah", "KV < 10%", disp_all[disp_all['kv'] < 10], "🟢",
+             "Perbedaan harga relatif kecil — monitoring rutin; telusuri jika tren meningkat"),
         ]
 
         # Ringkasan jumlah per kelompok
-        kcol1, kcol2, kcol3, kcol4 = st.columns(4)
-        kv_cols = [kcol1, kcol2, kcol3, kcol4]
-        kv_colors = ["#A32D2D", "#D85A30", "#BA7517", "#1D9E75"]
+        kcol1, kcol2, kcol3 = st.columns(3)
+        kv_cols = [kcol1, kcol2, kcol3]
+        kv_colors = ["#A32D2D", "#D85A30", "#1D9E75"]
         for i, (label, rentang, grp, icon, desc) in enumerate(groups):
             with kv_cols[i]:
                 st.markdown(
@@ -451,7 +490,7 @@ Beras Tawon yang harganya Rp 16.100/kg biasanya hanya berubah sekitar Rp 200 per
 
         for label, rentang, grp, icon, desc in groups:
             if len(grp) == 0: continue
-            with st.expander(f"{icon} {label} ({rentang}) — {len(grp)} komoditas", expanded=(label == "Intervensi")):
+            with st.expander(f"{icon} {label} ({rentang}) — {len(grp)} komoditas", expanded=(label == "Tinggi")):
                 st.caption(desc)
                 tbl = grp[['nama_bahan_pokok',
                            'harga_min', 'pasar_termurah', 'harga_max', 'pasar_termahal',
@@ -468,8 +507,8 @@ Beras Tawon yang harganya Rp 16.100/kg biasanya hanya berubah sekitar Rp 200 per
                 st.dataframe(tbl, use_container_width=True)
 
         st.caption(
-            f"Ringkasan: KV > 5% = {n_kv_tinggi}, KV 3–5% = {n_kv_sedang}, "
-            f"KV 1–3% = {n_kv_rendah}, KV < 1% = {n_kv_sangat_rendah}. "
+            f"Ringkasan: KV > 15% (Tinggi) = {n_kv_tinggi}, KV 10–15% (Sedang) = {n_kv_sedang}, "
+            f"KV < 10% (Rendah) = {n_kv_rendah}. "
             f"KV = Koefisien Variasi = (Standar Deviasi / Rata-rata) × 100%"
         )
 
@@ -572,7 +611,7 @@ elif halaman == "📊 Disparitas Harga":
     if len(disp_b) > 0:
         pivot = disp_b.pivot_table(
             index='nama_bahan_pokok', columns='pasar', values='z_score', aggfunc='mean')
-        pivot = pivot.reindex(columns=['RAWA INDAH', 'TELIHAN', 'CITRA MAS'])
+        pivot = pivot.reindex(columns=['CITRA MAS', 'RAWA INDAH', 'TELIHAN'])
         fig_heat = go.Figure(data=go.Heatmap(
             z=pivot.values, x=pivot.columns, y=pivot.index,
             colorscale=[[0,'#085041'],[0.35,'#5DCAA5'],[0.5,'#FAEEDA'],[0.65,'#F0997B'],[1,'#A32D2D']],
@@ -590,13 +629,21 @@ elif halaman == "📊 Disparitas Harga":
             st.markdown("""
 **Apa yang ditampilkan:**
 - Setiap **baris** = satu komoditas
-- Setiap **kolom** = satu pasar (Rawa Indah, Telihan, Citra Mas)
+- Setiap **kolom** = satu pasar (Citra Mas, Rawa Indah, Telihan)
 - **Angka dan warna** di setiap sel = z-score, yaitu seberapa jauh harga di pasar tersebut menyimpang dari rata-rata harga ketiga pasar
 
-**Cara membaca warna:**
-- 🟤 **Merah/gelap** (z-score positif tinggi) → harga di pasar ini **lebih mahal** dari rata-rata kota
-- 🟡 **Kuning/netral** (z-score mendekati 0) → harga **wajar**, sesuai rata-rata kota
-- 🟢 **Hijau** (z-score negatif) → harga di pasar ini **lebih murah** dari rata-rata kota
+**Rumus z-score disparitas:**
+""")
+            st.latex(r"z = \frac{X_{\text{pasar}} - \bar{X}_{\text{kota}}}{SD_{\text{kota}}}")
+            st.markdown(r"""
+Dimana $X_{\text{pasar}}$ = harga rata-rata bulanan di satu pasar, $\bar{X}_{\text{kota}}$ = rata-rata harga dari 3 pasar, dan $SD_{\text{kota}}$ = standar deviasi harga dari 3 pasar.
+
+**Cara membaca warna (5 tingkat gradasi):**
+- 🟤 **Merah tua** (z-score ≥ +1,5) → harga di pasar ini **jauh lebih mahal** dari rata-rata kota
+- 🟠 **Salmon/merah muda** (z-score +0,5 s.d +1,5) → harga **di atas** rata-rata kota
+- 🟡 **Kuning/krem** (z-score mendekati 0) → harga **wajar**, sesuai rata-rata kota
+- 💚 **Hijau muda** (z-score −0,5 s.d −1,5) → harga **di bawah** rata-rata kota
+- 🟢 **Hijau tua** (z-score ≤ −1,5) → harga di pasar ini **jauh lebih murah** dari rata-rata kota
 
 **Cara membaca per baris (satu komoditas):**
 - Jika satu baris semuanya **kuning** → harga komoditas ini **seragam** di ketiga pasar (disparitas rendah)
@@ -655,20 +702,28 @@ elif halaman == "📊 Disparitas Harga":
         ss['sort_key'] = ss['kv'].apply(lambda x: -1 if x < 0.01 else x)
         ss = ss.sort_values('sort_key', ascending=True)
         ss = ss.drop(columns=['sort_key'])
+        # Warna batang berdasarkan klasifikasi KV
+        ss = ss.copy()
+        ss['klasifikasi_kv'] = ss['kv'].apply(
+            lambda x: 'Rendah (< 10%)' if x < 10 else 'Sedang (10–15%)' if x < 15 else 'Tinggi (> 15%)')
+        kv_color_map = {
+            'Rendah (< 10%)': '#1D9E75',
+            'Sedang (10–15%)': '#D85A30',
+            'Tinggi (> 15%)': '#A32D2D',
+        }
         fig_bar = px.bar(ss, x='kv', y='nama_bahan_pokok', orientation='h',
-                         color='kv',
-                         color_continuous_scale=['#1D9E75', '#5DCAA5', '#BA7517', '#D85A30', '#A32D2D'],
-                         labels={'kv': 'KV (%)', 'nama_bahan_pokok': ''})
-        fig_bar.add_vline(x=1, line_dash="dash", line_color="#1D9E75", line_width=3)
-        fig_bar.add_vline(x=3, line_dash="dash", line_color="#D85A30", line_width=3)
-        fig_bar.add_vline(x=5, line_dash="dash", line_color="#A32D2D", line_width=3)
+                         color='klasifikasi_kv',
+                         color_discrete_map=kv_color_map,
+                         category_orders={'klasifikasi_kv': ['Rendah (< 10%)', 'Sedang (10–15%)', 'Tinggi (> 15%)']},
+                         labels={'kv': 'KV (%)', 'nama_bahan_pokok': '', 'klasifikasi_kv': 'Klasifikasi'})
+        fig_bar.add_vline(x=10, line_dash="dash", line_color="#D85A30", line_width=3)
+        fig_bar.add_vline(x=15, line_dash="dash", line_color="#A32D2D", line_width=3)
         fig_bar.update_layout(
             height=max(500, len(ss)*22),
             margin=dict(l=10, r=10, t=30, b=10),
-            showlegend=False,
             xaxis=dict(title='KV (%)'),
             yaxis=dict(autorange='reversed'),
-            coloraxis_colorbar=dict(title='KV (%)'),
+            legend=dict(title='Klasifikasi', orientation='h', yanchor='bottom', y=1.02, xanchor='left', x=0),
         )
         st.plotly_chart(fig_bar, use_container_width=True)
 
@@ -677,13 +732,12 @@ elif halaman == "📊 Disparitas Harga":
 **Apa yang ditampilkan:**
 - Setiap batang horizontal = satu komoditas
 - Panjang batang = Koefisien Variasi (KV), yaitu standar deviasi harga dibagi rata-rata harga dari 3 pasar × 100%
-- Garis putus-putus menandai batas klasifikasi: hijau (1%), orange (3%), merah (5%)
+- Garis putus-putus menandai batas klasifikasi: orange (10%), merah (15%)
 
 **Cara membaca:**
-- Batang **pendek dan hijau** (KV < 1%) → harga komoditas ini sangat seragam di ketiga pasar
-- Batang **kuning** (KV 1–3%) → ada sedikit variasi, masih wajar
-- Batang **orange** (KV 3–5%) → perbedaan cukup terlihat, perlu dipantau
-- Batang **panjang dan merah** (KV > 5%) → harga sangat bervariasi, perlu intervensi
+- Batang **hijau** (KV < 10%) → disparitas **Rendah**, monitoring rutin
+- Batang **orange** (KV 10–15%) → disparitas **Sedang**, perlu analisis penyebab
+- Batang **panjang dan merah** (KV > 15%) → disparitas **Tinggi**, prioritaskan verifikasi lapangan dan intervensi
 """)
 
     # Perbandingan harga 3 pasar
@@ -692,8 +746,13 @@ elif halaman == "📊 Disparitas Harga":
         kom_list = sorted(disp_b['nama_bahan_pokok'].unique())
         sel = st.selectbox("Pilih komoditas", kom_list)
         kd = disp_b[disp_b['nama_bahan_pokok'] == sel]
+        pasar_order = ['CITRA MAS', 'RAWA INDAH', 'TELIHAN']
+        kd = kd.copy()
+        kd['pasar'] = pd.Categorical(kd['pasar'], categories=pasar_order, ordered=True)
+        kd = kd.sort_values('pasar')
         fig_c = px.bar(kd, x='pasar', y='harga_rata2', color='zona', color_discrete_map=ZONA_COLORS,
-                       text='harga_rata2', labels={'harga_rata2':'Harga (Rp)','pasar':'Pasar'})
+                       text='harga_rata2', labels={'harga_rata2':'Harga (Rp)','pasar':'Pasar'},
+                       category_orders={'pasar': pasar_order})
         avg = kd['harga_kota'].iloc[0] if len(kd) > 0 else 0
         fig_c.add_hline(y=avg, line_dash="dash", line_color="gray",
                         annotation_text=f"Rata-rata kota: Rp{avg:,.0f}")
@@ -720,12 +779,10 @@ elif halaman == "📊 Disparitas Harga":
         kv_trend.columns = ['bulan', 'kv_rata2']
         fig_t = px.line(kv_trend, x='bulan', y='kv_rata2', markers=True,
                         labels={'kv_rata2': 'KV rata-rata (%)','bulan': 'Bulan'})
-        fig_t.add_hline(y=1, line_dash="dash", line_color="green",
-                        annotation_text="Sangat Rendah < 1%")
-        fig_t.add_hline(y=3, line_dash="dash", line_color="orange",
-                        annotation_text="Sedang 3%")
-        fig_t.add_hline(y=5, line_dash="dash", line_color="red",
-                        annotation_text="Tinggi 5%")
+        fig_t.add_hline(y=10, line_dash="dash", line_color="orange",
+                        annotation_text="Sedang 10%")
+        fig_t.add_hline(y=15, line_dash="dash", line_color="red",
+                        annotation_text="Tinggi 15%")
         fig_t.update_layout(height=350)
         st.plotly_chart(fig_t, use_container_width=True)
 
@@ -734,13 +791,13 @@ elif halaman == "📊 Disparitas Harga":
 **Apa yang ditampilkan:**
 - Sumbu horizontal = bulan
 - Sumbu vertikal = rata-rata Koefisien Variasi (KV) dari seluruh komoditas
-- Garis batas: hijau (1% — sangat rendah), orange (3% — sedang), merah (5% — tinggi)
+- Garis batas: orange (10% — sedang), merah (15% — tinggi)
 
 **Cara membaca:**
 - Garis **menurun** dari bulan ke bulan → disparitas harga antar pasar **membaik**
 - Garis **naik** → disparitas **memburuk**
-- Garis **di bawah 1%** → kondisi ideal, harga hampir seragam di semua pasar
-- Garis **di atas 5%** → perlu intervensi untuk memperbaiki distribusi
+- Garis **di bawah 10%** → disparitas rendah, monitoring rutin
+- Garis **di atas 15%** → disparitas tinggi, perlu verifikasi lapangan dan intervensi
 """)
 
 
@@ -754,7 +811,7 @@ elif halaman == "📈 Stabilisasi & Tren":
 
     stab_b = stab[stab['bulan'] == bulan_selected].copy()
 
-    st.subheader("Status stabilisasi per komoditas")
+    st.subheader("Nilai z-score dan Status stabilisasi per komoditas")
     if len(stab_b) > 0 and stab_b['z_score'].notna().any():
         sd = stab_b[stab_b['z_score'].notna()].sort_values('z_score', ascending=False)
         fig_sb = px.bar(sd, x='z_score', y='nama_bahan_pokok', orientation='h',
